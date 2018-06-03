@@ -1,0 +1,105 @@
+---
+title: "Practical Mashine Learning Project"
+author: "Shaoqing Ying"
+date: "3 Juni 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopsis:
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The data were provided by "Groupware@LES". 
+
+## Download data and read data:
+
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "testing.csv")
+
+trainDF <- read.csv("training.csv",na.strings=c("NA","#DIV/0!",""))
+testDF <- read.csv("testing.csv",na.strings=c("NA","#DIV/0!",""))
+
+dim(trainDF)
+dim(testDF)
+```
+
+## Data Preparation
+
+Currently there are over 150 variables, which should be reduced for a better modelling. The first step is to check the columns with near zero variance, which could be thrown out of the variables.
+
+```{r}
+require(caret)
+trainDF.nzv <- nearZeroVar(trainDF[,-ncol(trainDF)],saveMetrics=TRUE)
+trainDF_sub <- trainDF[,trainDF.nzv$nzv==FALSE]
+
+testDF.nzv <- nearZeroVar(testDF[,-ncol(testDF)],saveMetrics=TRUE)
+testDF_sub <- testDF[,testDF.nzv$nzv==FALSE]
+```
+
+Secondly, the first 6 columns which are not truly predictors will be eliminated. 
+
+```{r}
+trainDF_sub <- trainDF_sub[, -c(1:6)]
+testDF_sub <- testDF_sub[, -c(1:6)]
+```
+
+Thirdly, the columns with more than 50% of NA should be removed.
+
+```{r}
+idx <- sapply(trainDF_sub, function(x) sum(is.na(x))/length(x) )
+trainDF_sub <- trainDF_sub[, which(idx < 0.5)]
+
+idx <- sapply(testDF_sub, function(x) sum(is.na(x))/length(x) )
+testDF_sub <- testDF_sub[, which(idx < 0.5)]
+
+dim(trainDF_sub)
+dim(testDF_sub)
+```
+
+## Modelling
+
+Split the data into train part and test part
+
+```{r}
+inTrain     <- createDataPartition(trainDF_sub$classe, p = 0.7, list = FALSE)
+training  <- trainDF_sub[inTrain,]
+testing      <- trainDF_sub[-inTrain,]
+dim(training)
+dim(testing)
+```
+
+The algorithm "Ramdom Forest" will be chosen for the modelling
+
+```{r}
+set.seed(23)
+modFit <- train(classe ~ ., method="rf", preProcess=c("center", "scale"), trControl=trainControl(method = "cv", number = 5), training)
+pred <- predict(modFit,testing)
+confusionMatrix(pred, testing$classe)
+
+Accuracy <- confusionMatrix(pred, testing$classe)$overall[1]
+Accuracy
+```
+
+With random forest, the accuracy is very high. The out-of-sample error is less than 1%.
+
+
+## Using the Model for the test sample
+
+```{r}
+pred2 <- predict(modFit, testDF_sub[, -length(testDF_sub)])
+pred2
+```
+
+## Tree Visulization
+
+```{r}
+library(rpart)
+library(rpart.plot)
+rtree<- rpart(classe ~ ., data=training, method="class")
+prp(rtree)
+```
